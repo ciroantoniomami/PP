@@ -16,7 +16,7 @@ int main(){
 
     FILE *fp;
     if((fp=fopen("mandelbrot.ppm","wt"))!=NULL)
-            fprintf(fp,"P3\n%d %d 255\n",width,height);
+            fprintf(fp,"P3\n%ld %ld 255\n",width,height);
           
     start_time = omp_get_wtime();
     #pragma omp parallel
@@ -33,7 +33,7 @@ int main(){
 
         printf("Hi my friend, I'm thread n°%d\n",me);
         
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp for schedule(dynamic)
 
                 for(long k=0; k < width*height; k++){
                     i=k/height;

@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
@@ -32,27 +33,35 @@ int main ( int argc , char * argv[] ){
         a[i] = i ;
     
     int key ;
-    printf("Insert key\n");
+    printf("Insert Key\n");
     scanf("%d" , &key );
 
     startTime = CPU_TIME;
     #if defined(_OPENMP)
 
-    int nthreads = omp_get_num_threads() ;
-    long long int k = N/nthreads ;
-    int control = 0;
-
+    int nthreads , k , control , id , found ;
     #pragma omp parallel
+
+    
+    #pragma omp single
+    {
+    nthreads = omp_get_num_threads() ;
+    k = N/nthreads ;
+    control = 0;
+    printf("%d\n" , omp_get_cancellation()) ;
+    }
+
+    
     
     #pragma omp parallel
     {
-    int found = -1 ;
-    int id = omp_get_thread_num() ;
-    printf("%d" , id) ;
-       
+    found = -1 ;
+    id = omp_get_thread_num() ;
+    
+           
 
-        #pragma omp parallel for 
         
+        #pragma omp for schedule(static)
         for ( int i = 0 ; i < nthreads ; i ++){
         
         long long int start = i * k ;
@@ -60,14 +69,17 @@ int main ( int argc , char * argv[] ){
 
         found = binarysearch ( a , start , end , key ) ;
         if (found != -1){
-                printf("found! %d \n" , found ) ;    
+                printf("found! %d from id : %d \n" , found , id) ;    
                     
                 #pragma omp cancel for
+    
             }
 
         #pragma omp cancellation point for
+        
         }  
         
+    }
             
         #pragma omp single 
         {
@@ -82,8 +94,8 @@ int main ( int argc , char * argv[] ){
 
         }
     
-    }           
-           
+               
+          
             
     
     

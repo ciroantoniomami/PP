@@ -1,6 +1,4 @@
-#ifndef _OPENMP
-#error "openmp support is required to compile this code"
-#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
@@ -22,27 +20,39 @@
 int main( int argc , char* argv[]){
     
     int a[6] = {9 , 5 , 1 , 12 , 3 , 7} ;
-    int sum[6] ;
+    int sum[6] = {0 , 0 , 0 , 0 , 0 , 0} ;
     struct  timespec ts;
     double startTime , endTime ;
 
     startTime = CPU_TIME ;
     #if defined(_OPENMP)
 
-    #pragma omp parallel
-    
+    int nthreads ;
+    int s = 0 ;
         #pragma omp single 
         {
-        sum[0] = a[0];
-        printf("%d\n" , sum[0]) ;
+        nthreads = omp_get_num_threads() ;
         }
 
-        #pragma omp parallel for
-        for (int i = 1 ; i < 6 ; i ++){
-            sum[i] = a[i] + sum[i -1] ;
-            printf("%d\n" , sum[i]) ;
+        #pragma omp parallel for 
+        for (int i = 0 ; i < 6 ; i ++){
+            #pragma omp parallel for reduction (+:sum[i])
+            for ( int k = 0 ; k < i + 1 ; k ++ ){
+            
+            sum[i] += a[k] ;  
+            }
+              
         }
     
+        
+
+        #pragma omp single
+        {
+            for(int i = 0 ; i < 6 ; i++)
+                printf("%d\n" , sum[i]) ;
+        endTime = CPU_TIME ;
+        printf("Walltime omp : %g seconds\n" , endTime - startTime ) ;
+        }
 
     #else
     sum[0] = a[0];

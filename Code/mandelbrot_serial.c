@@ -14,7 +14,7 @@ int main(){
     FILE *fp;
     start_time = omp_get_wtime();
      if((fp=fopen("mandelbrot.ppm","wt"))!=NULL){
-            fprintf(fp,"P3\n%d %d 255\n",width,height);
+            fprintf(fp,"P3\n%ld %ld 255\n",width,height);
             for(long i = 0; i < width; i++){
               for(long j=0; j < height; j++){
                 v=value(i,j,width,height);
