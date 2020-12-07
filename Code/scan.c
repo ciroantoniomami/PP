@@ -1,3 +1,6 @@
+#ifndef _OPENMP
+#error "openmp support is required to compile this code"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
@@ -27,7 +30,7 @@ int main( int argc , char* argv[]){
     #if defined(_OPENMP)
 
     #pragma omp parallel
-    {
+    
         #pragma omp single 
         {
         sum[0] = a[0];
@@ -39,7 +42,7 @@ int main( int argc , char* argv[]){
             sum[i] = a[i] + sum[i -1] ;
             printf("%d\n" , sum[i]) ;
         }
-    }
+    
 
     #else
     sum[0] = a[0];

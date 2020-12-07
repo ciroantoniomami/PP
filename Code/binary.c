@@ -43,21 +43,30 @@ int main ( int argc , char * argv[] ){
     int control = 0;
 
     #pragma omp parallel
+    
+    #pragma omp parallel
     {
-        int id = omp_get_thread_num() ;
-        int found = -1 ;
-        long long int start = id * k ;
+    int found = -1 ;
+    int id = omp_get_thread_num() ;
+    printf("%d" , id) ;
+       
+
+        #pragma omp parallel for 
+        
+        for ( int i = 0 ; i < nthreads ; i ++){
+        
+        long long int start = i * k ;
         long long int end = start + k - 1 ;
+
         found = binarysearch ( a , start , end , key ) ;
         if (found != -1){
                 printf("found! %d \n" , found ) ;    
                     
-                #pragma omp cancel parallel
+                #pragma omp cancel for
             }
 
-        #pragma omp cancellation point parallel
-
-            
+        #pragma omp cancellation point for
+        }  
         
             
         #pragma omp single 
@@ -72,8 +81,8 @@ int main ( int argc , char * argv[] ){
                 }
 
         }
-    } 
-               
+    
+    }           
            
             
     
