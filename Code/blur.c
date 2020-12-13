@@ -16,10 +16,12 @@ int main (int argc , char * argv[]){
         
         exit (-1) ;
     }
-
+    int m , n ;
+    m = 256 ;
+    n = 256 ;
     char * image = argv[1] ;
     short int * M ;
-    M = (short int*)malloc(m*n);
+    M = (short int*)malloc(m * n * sizeof(short int));
     FILE *f = fopen (image , "rb") ;
     fread (M , 1 , m * n , f) ;
     fclose (f) ;
@@ -67,11 +69,12 @@ int main (int argc , char * argv[]){
                 printf (" %9.2f ",K[i * dim_kernel + j]) ;
             printf ("\n") ;
         }    
-        
     }
 
 
     MPI_Finalize () ;
+
+    free ( M ) ;
     free( K ) ;
 
     return 0 ;
