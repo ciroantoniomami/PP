@@ -9,21 +9,19 @@ void kernel (double * K , int dim_kernel , int type_kernel , int weight) ;
 
 int main (int argc , char * argv[]){
     
-    
+    //Initialize matrix for the image and the kernel
     if (argc <=1){
         fprintf (stderr , " Required at least 3 parameters : PGM Image ,"
          "type of the kernel , dimension of the kernel and weight (if needed) ") ;
         
         exit (-1) ;
     }
-    int m , n ;
-    m = 256 ;
-    n = 256 ;
+    int N[2] = {256,256} ;
     char * image = argv[1] ;
     short int * M ;
-    M = (short int*)malloc(m * n * sizeof(short int));
+    M = (short int*)malloc(N[0] * N[1] * sizeof(short int));
     FILE *f = fopen (image , "rb") ;
-    fread (M , 1 , m * n , f) ;
+    fread (M , 1 , N[0] * N[1] , f) ;
     fclose (f) ;
 
 
@@ -44,7 +42,7 @@ int main (int argc , char * argv[]){
     MPI_Init(&argc , &argv);
     MPI_Status status;
 
-
+    //Create a new comm world
     int size;
     MPI_Comm_size(MPI_COMM_WORLD , &size);
 
@@ -71,7 +69,26 @@ int main (int argc , char * argv[]){
         }    
     }
 
+    //Define the number of elements in each dimension for each proc
+    int local_dim[2];
+    
+    for( int i = 0; i < 2 ; i++ ){ 
 
+    local_dim[i] = N[i]/dims[i];
+    if( rank == (size-1)  )    local_dim[i] += N[i]%dims[i];
+
+    }
+
+    double * local_M ;
+    local_M = (double*)malloc(local_dim[0] * local_dim[1] * sizeof(double)) ;
+
+    //Initialize the local matrix
+    /*int offset = rank * local_dim[0] ;
+    for (int i = 0 ; i < local_dim[0] ; i++)
+        for(int j = 0 ; j < local_dim[1] ; j++)
+            local_M[i * local_dim[0] + j] = M[(offset + i) * N[0] + (j + offset)]*/
+
+    free ( local_M );
     MPI_Finalize () ;
 
     free ( M ) ;
