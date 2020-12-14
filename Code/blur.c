@@ -17,8 +17,8 @@ int main (int argc , char * argv[]){
         exit (-1) ;
     }
     int N[2] = {256,256} ;
-    char * image = argv[1] ;
     short int * M ;
+    char * image = argv[1] ;
     M = (short int*)malloc(N[0] * N[1] * sizeof(short int));
     FILE *f = fopen (image , "rb") ;
     fread (M , 1 , N[0] * N[1] , f) ;
@@ -59,36 +59,61 @@ int main (int argc , char * argv[]){
     int rank;
     MPI_Comm_rank(new , &rank);
 
+    //Define the number of elements in each dimension for each proc
+    int local_dim[2];
+    
+    local_dim[0] = N[0] / dims[0] ;
+    local_dim[1] = N[1] / dims[1] ;
+
+    short int * local_M ;
+    local_M = (short int *)malloc(local_dim[0] * local_dim[1] * sizeof(short int)) ;
+
+    MPI_Datatype type, resizedtype ;
+    int starts [2] = {0 , 0} ;
+
+    MPI_Type_create_subarray (2, N , local_dim , starts , MPI_ORDER_C , MPI_SHORT , &type) ;
+    MPI_Type_create_resized (type, 0, local_dim[0] * sizeof(short int), &resizedtype) ;
+    MPI_Type_commit (&resizedtype) ;
+
+    int counts[size] ;
+    int displs[size] ;
+
+
+
 
 
     if (rank == 0){
+
+
         for (int i = 0 ; i < dim_kernel ; i++){
             for (int j = 0 ; j < dim_kernel ; j++)
                 printf (" %9.2f ",K[i * dim_kernel + j]) ;
             printf ("\n") ;
-        }    
-    }
+        }
 
-    //Define the number of elements in each dimension for each proc
-    int local_dim[2];
-    
-    for( int i = 0; i < 2 ; i++ ){ 
-
-    local_dim[i] = N[i]/dims[i];
-    if( rank == (size-1)  )    local_dim[i] += N[i]%dims[i];
+    for (int i = 0; i < size; i++) counts[i] = 1 ;
+    for (int i = 0; i < size; i++) displs[i] = i % dims[0] + i / dims[0] * local_dim[1] * dims[0] ;
 
     }
+    MPI_Bcast (counts , size , MPI_INT , 0 , new) ;
+    MPI_Bcast (displs , size , MPI_INT , 0 , new) ;
 
-    double * local_M ;
-    local_M = (double*)malloc(local_dim[0] * local_dim[1] * sizeof(double)) ;
+    /* send submatrices to all processes */
+    MPI_Scatterv (M , counts , displs , resizedtype , local_M ,
+     local_dim[0] * local_dim[1] , MPI_SHORT, 0, new) ;
 
-    //Initialize the local matrix
-    /*int offset = rank * local_dim[0] ;
-    for (int i = 0 ; i < local_dim[0] ; i++)
-        for(int j = 0 ; j < local_dim[1] ; j++)
-            local_M[i * local_dim[0] + j] = M[(offset + i) * N[0] + (j + offset)]*/
+   /* for (int k = 0 ; k < size ; k++){
+        if ( rank == k){
+    for (int i = 0 ; i < local_dim[1] ; i++){
+     for (int j = 0 ; j < local_dim[0] ; j++)
+         printf (" %d ",local_M[i * local_dim[0] + j]) ;
+     printf ("\n") ;
+    }
+        }
+    }*/
 
-    free ( local_M );
+    MPI_Type_free (&resizedtype) ;
+    free (local_M) ;
     MPI_Finalize () ;
 
     free ( M ) ;
