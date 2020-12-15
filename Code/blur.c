@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <mpi.h>
-#include <malloc.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #define MPI_Proc_null -1 
@@ -34,22 +33,21 @@ int main (int argc , char * argv[]){
     if (atoi (argv[4])) { weight = atoi (argv[4]) ;}
     else {weight = 0 ;}
     int kdim = dim_kernel / 2 ;
-
     double * K ;
     K = (double*)malloc( dim_kernel * dim_kernel * sizeof(double)) ;
     kernel ( K , dim_kernel , type_kernel , weight) ;
 
     
     MPI_Init(&argc , &argv);
-    MPI_Status status ;
-    MPI_Request request ;
+    MPI_Status status[4] ;
+    MPI_Request request[4] ;
     //Create a new comm world
     int size;
     MPI_Comm_size(MPI_COMM_WORLD , &size);
 
     int dims[2] = {0,0};
     MPI_Dims_create(size ,2 , dims);
-
+  
     int periods[2] = {false , false};
     int reorder = true;
 
@@ -67,7 +65,7 @@ int main (int argc , char * argv[]){
     local_dim[1] = N[1] / dims[1] ;
 
     short int * local_M ;
-    local_M = (short int *)malloc(local_dim[0] * local_dim[1] * sizeof(short int)) ;
+    local_M = (short int *)calloc(local_dim[0] * local_dim[1] , sizeof(short int)) ;
 
     MPI_Datatype type, resizedtype ;
     int starts [2] = {0 , 0} ;
@@ -99,10 +97,12 @@ int main (int argc , char * argv[]){
     MPI_Bcast (counts , size , MPI_INT , 0 , new) ;
     MPI_Bcast (displs , size , MPI_INT , 0 , new) ;
 
+    MPI_Barrier (new) ;
     /* send submatrices to all processes */
     MPI_Scatterv (M , counts , displs , resizedtype , local_M ,
      local_dim[0] * local_dim[1] , MPI_SHORT, 0, new) ;
 
+    MPI_Barrier (new) ;
    /* for (int k = 0 ; k < size ; k++){
         if ( rank == k){
     for (int i = 0 ; i < local_dim[1] ; i++){
@@ -132,9 +132,70 @@ int main (int argc , char * argv[]){
     MPI_Type_create_resized (type_row, 0, local_dim[0] * sizeof(short int), &rowhalo) ;
     MPI_Type_commit (&rowhalo) ;
 
-    int source , dest ;
+    int sourceleft , destright ;
 
-    for (int disp = -1 ; disp < 2 ; disp = disp + 2){
+    MPI_Cart_shift (new , 0 , 1 , &sourceleft , &destright) ;
+
+    if (sourceleft != MPI_PROC_NULL){
+        MPI_Irecv (lbuffer , 1 , colhalo , sourceleft , 123 , new , &request[0]) ;
+    }
+
+    if (destright != MPI_PROC_NULL){
+        MPI_Send (&local_M[ local_dim[0] - kdim  ] , 1 , colhalo , destright , 123 , new) ;
+    }
+
+    if(sourceleft != MPI_PROC_NULL){
+        MPI_Wait ( &request[0] , &status[0]) ;
+    }
+
+    int sourceright , destleft ;
+
+    MPI_Cart_shift (new , 0 , -1 , &sourceright , &destleft) ;
+
+    if (sourceright != MPI_PROC_NULL){
+        MPI_Irecv (rbuffer , 1 , colhalo , sourceright , 124 , new , &request[1]) ;
+    }
+
+    if (destleft != MPI_PROC_NULL){
+        MPI_Send (local_M , 1 , colhalo , destleft , 124 , new) ;
+    }
+
+    if(sourceright != MPI_PROC_NULL){
+        MPI_Wait ( &request[1] , &status[1]) ;
+    }
+
+    int sourceup , destdown ;
+
+    MPI_Cart_shift (new , 1 , 1 , &sourceup , &destdown) ;
+
+    if (sourceup != MPI_PROC_NULL){
+        MPI_Irecv (ubuffer , 1 , rowhalo , sourceup , 124 , new , &request[2]) ;
+    }
+
+    if (destdown != MPI_PROC_NULL){
+        MPI_Send (&local_M[local_dim[0] * local_dim[1]  - kdim * local_dim[0]] , 1 , rowhalo , destdown , 124 , new) ;
+    }
+
+    if(sourceup != MPI_PROC_NULL){
+        MPI_Wait ( &request[2] , &status[2]) ;
+    }
+
+    int sourcedown , destup ;
+
+    MPI_Cart_shift (new , 1 , -1 , &sourcedown , &destup) ;
+
+    if (sourcedown != MPI_PROC_NULL){
+        MPI_Irecv (dbuffer , 1 , rowhalo , sourcedown , 125 , new , &request[3]) ;
+    }
+
+    if (destup != MPI_PROC_NULL){
+        MPI_Send (local_M , 1 , rowhalo , destup , 125 , new) ;
+    }
+
+    if(sourcedown != MPI_PROC_NULL){
+        MPI_Wait ( &request[3] , &status[3]) ;
+    } 
+    /*for (int disp = -1 ; disp < 2 ; disp = disp + 2){
         for (int dir = 0 ; dir < 2 ; dir++){
             MPI_Cart_shift (new , dir , disp , &source , &dest) ;
 
@@ -171,13 +232,12 @@ int main (int argc , char * argv[]){
             }
             MPI_Wait( &request , &status) ;
         }
-    }
+    }*/
 
 
-
-    MPI_Type_free (&type_col) ;
+    MPI_Barrier (new) ;
+   
     MPI_Type_free (&colhalo) ;
-    MPI_Type_free (&type_row) ;
     MPI_Type_free (&rowhalo) ;
     MPI_Type_free (&resizedtype) ;
     free (local_M) ;
