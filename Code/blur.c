@@ -16,6 +16,7 @@
 void kernel (double * K , int dim_kernel , int type_kernel , int weight) ;
 void write_pgm_image( void *image, int maxval, int xsize, int ysize, const char *image_name);
 void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const char *image_name);
+void swap_image( void *image, int xsize, int ysize, int maxval );
 
 
 
@@ -34,12 +35,11 @@ int main (int argc , char * argv[]){
     int  ysize ;
     
     int maxval ;
-    short int * M ;
+    unsigned short int * M ;
     double * new_M ;
     
     
 
-   // M = (short int*)malloc(N[0] * N[1] * sizeof(short int));
     
     
     
@@ -47,6 +47,8 @@ int main (int argc , char * argv[]){
     read_pgm_image((void **)&M , &maxval , &xsize , &ysize , image_name) ;
     int N[2] = {xsize , ysize} ;
     new_M = (double*)malloc(N[0] * N[1] * sizeof(double));
+
+    swap_image((void *)M , xsize , ysize , maxval);
 
     int type_kernel ;
     int dim_kernel ;
@@ -87,14 +89,14 @@ int main (int argc , char * argv[]){
     local_dim[0] = N[0] / dims[0] ;
     local_dim[1] = N[1] / dims[1] ;
 
-    short int * local_M ;
-    local_M = (short int *)calloc(local_dim[0] * local_dim[1] , sizeof(short int)) ;
+    unsigned short int * local_M ;
+    local_M = (unsigned short int *)calloc(local_dim[0] * local_dim[1] , sizeof(unsigned short int)) ;
 
     MPI_Datatype type, resizedtype ;
     int starts [2] = {0 , 0} ;
 
-    MPI_Type_create_subarray (2, N , local_dim , starts , MPI_ORDER_C , MPI_SHORT , &type) ;
-    MPI_Type_create_resized (type, 0, local_dim[0] * sizeof(short int), &resizedtype) ;
+    MPI_Type_create_subarray (2, N , local_dim , starts , MPI_ORDER_C , MPI_UNSIGNED_SHORT , &type) ;
+    MPI_Type_create_resized (type, 0, local_dim[0] * sizeof(unsigned short int), &resizedtype) ;
     MPI_Type_commit (&resizedtype) ;
 
     MPI_Datatype type2, resizedtype2 ;
@@ -132,11 +134,13 @@ int main (int argc , char * argv[]){
     MPI_Barrier (new) ;
     /* send submatrices to all processes */
     MPI_Scatterv (M , counts , displs , resizedtype , local_M ,
-     local_dim[0] * local_dim[1] , MPI_SHORT, 0, new) ;
+     local_dim[0] * local_dim[1] , MPI_UNSIGNED_SHORT, 0, new) ;
 
     MPI_Barrier (new) ;
     
-    if( rank == 3){
+    if( rank == 0){
+        swap_image((void *)local_M , local_dim[0] , local_dim[1] , maxval);
+
         const char * new_image = argv[5] ;
         write_pgm_image(local_M , 65535 , local_dim[0] , local_dim[1] , new_image) ;
     }
@@ -544,6 +548,27 @@ void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const ch
     }  
 
   fclose(image_file);
+  return;
+}
+
+void swap_image( void *image, int xsize, int ysize, int maxval )
+/*
+ * This routine swaps the endianism of the memory area pointed
+ * to by ptr, by blocks of 2 bytes
+ *
+ */
+{
+  if ( maxval > 255 )
+    {
+      // pgm files has the short int written in
+      // big endian;
+      // here we swap the content of the image from
+      // one to another
+      //
+      unsigned int size = xsize * ysize;
+      for ( int i = 0; i < size; i+= 2 )
+  	((unsigned short int*)image)[i] = swap(((unsigned short int*)image)[i]);
+    }
   return;
 }
 
