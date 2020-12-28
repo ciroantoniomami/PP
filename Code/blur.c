@@ -2,7 +2,8 @@
 #include <mpi.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#define MPI_Proc_null -1 
+#include <string.h>
+#include <math.h>
 #if ((0x100 & 0xf) == 0x0)
 #define I_M_LITTLE_ENDIAN 1
 #define swap(mem) (( (mem) & (short int)0xff00) >> 8) +	\
@@ -13,8 +14,10 @@
 #endif
 
 void kernel (double * K , int dim_kernel , int type_kernel , int weight) ;
-void write_pgm_image( void *image, int maxval, int xsize, int ysize, const char *image_name) ;
-void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const char *image_name) ;
+void write_pgm_image( void *image, int maxval, int xsize, int ysize, const char *image_name);
+void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const char *image_name);
+
+
 
 int main (int argc , char * argv[]){
     
@@ -25,20 +28,25 @@ int main (int argc , char * argv[]){
         
         exit (-1) ;
     }
-    int N[2] = {256,256} ;
-    int maxval = 65536;
+    
+    const char *image_name = argv[1] ;
+    int  xsize ;
+    int  ysize ;
+    
+    int maxval ;
     short int * M ;
     double * new_M ;
-    char * image = argv[1] ;
     
-    //read_pgm_image((void **)&M , &maxval , &N[0] , &N[1] , image );
-    M = (short int*)malloc(N[0] * N[1] * sizeof(short int));
+    
+
+   // M = (short int*)malloc(N[0] * N[1] * sizeof(short int));
+    
+    
+    
+   
+    read_pgm_image((void **)&M , &maxval , &xsize , &ysize , image_name) ;
+    int N[2] = {xsize , ysize} ;
     new_M = (double*)malloc(N[0] * N[1] * sizeof(double));
-    FILE *f = fopen (image , "rb") ;
-    fread (M , 1 , N[0] * N[1] , f) ;
-    fclose (f) ;
-
-
 
     int type_kernel ;
     int dim_kernel ;
@@ -127,16 +135,11 @@ int main (int argc , char * argv[]){
      local_dim[0] * local_dim[1] , MPI_SHORT, 0, new) ;
 
     MPI_Barrier (new) ;
-   /* for (int k = 0 ; k < size ; k++){
-        if ( rank == k){
-    for (int i = 0 ; i < local_dim[1] ; i++){
-     for (int j = 0 ; j < local_dim[0] ; j++)
-         printf (" %d ",local_M[i * local_dim[0] + j]) ;
-     printf ("\n") ;
+    
+    if( rank == 3){
+        const char * new_image = argv[5] ;
+        write_pgm_image(local_M , 65535 , local_dim[0] , local_dim[1] , new_image) ;
     }
-        }
-    }*/
-
     // The structure that will be used to exchange data between   
     short int * ubuffer = (short int *) calloc (  local_dim[0] * kdim , sizeof ( short int)) ;    
     short int * dbuffer = (short int *) calloc (  local_dim[0] * kdim , sizeof ( short int)) ;
@@ -265,44 +268,7 @@ int main (int argc , char * argv[]){
 //    }
 //    if(samma == 8) {printf("rank %d has send on axis y to up\n", rank);
 //    }
-    /*for (int disp = -1 ; disp < 2 ; disp = disp + 2){
-        for (int dir = 0 ; dir < 2 ; dir++){
-            MPI_Cart_shift (new , dir , disp , &source , &dest) ;
-
-            if (source != MPI_PROC_NULL && disp == -1 && dir == 0){
-                MPI_Irecv (rbuffer , 1 , colhalo , source , 123 , new , &request) ; 
-            }
-
-            if (source != MPI_PROC_NULL && disp == 1 && dir == 0){
-                MPI_Irecv (lbuffer , 1 , colhalo , source , 123 , new , &request) ;
-            }
-
-            if (source != MPI_PROC_NULL && disp == -1 && dir == 1){
-                MPI_Irecv (dbuffer , 1 , rowhalo , source , 123 , new , &request) ;
-            }
-
-            if (source != MPI_PROC_NULL && disp == 1 && dir == 1){
-                MPI_Irecv (ubuffer , 1 , rowhalo , source , 123 , new , &request) ;
-            }
-
-            if (dest != MPI_PROC_NULL && disp == -1 && dir == 0){
-                MPI_Send (local_M , 1 , colhalo , dest , 123 , new ) ;
-            }
-
-            if (dest != MPI_PROC_NULL && disp == 1 && dir == 0){
-                MPI_Send (&local_M[local_dim[0] - kdim] , 1 , colhalo , dest , 123 , new ) ;
-            }
-
-            if (dest != MPI_PROC_NULL && disp == -1 && dir == 1){
-                MPI_Send (local_M , 1 , rowhalo , dest , 123 , new ) ;
-            }
-
-            if (dest != MPI_PROC_NULL && disp == 1 && dir == 1){
-                MPI_Send (&local_M[(local_dim[0] * local_dim[1] - kdim * local_dim[0])] , 1 , rowhalo , dest , 123 , new ) ;
-            }
-            MPI_Wait( &request , &status) ;
-        }
-    }*/
+   
 
  //   printf("I'm rank : %d and my left is : %d , my right : %d\n my up : %d , my down : %d\n", rank ,left ,right, up , down) ;
  //   printf("my up_left : %d , my up_right : %d\n my down_left : %d , my down_right : %d\n", top_up[0] , top_up[1] , top_down[0] , top_down[1] ) ;
@@ -392,26 +358,15 @@ int main (int argc , char * argv[]){
 //        } 
 
 
-    MPI_Gatherv(result_M , 1 , resizedtype2 ,
-                new_M , counts2 , displs2 ,
-                MPI_DOUBLE , 0 , new ) ;
-
-    if (rank == 0){
-        const char * new_image = argv[4] ;
-        write_pgm_image(new_M , 65535 , N[0] , N[1] , new_image) ;
-        for ( int i = 0 ; i < N[0] ; i ++){
-            for (int j = 0 ; j < N[1] ; j++){
-                printf(" %d ", M[i * N[0] + j] );
-            }
-            printf("\n");
-        } 
-        for ( int i = 0 ; i < N[0] ; i ++){
-            for (int j = 0 ; j < N[1] ; j++){
-                printf(" %f ", new_M[i * N[0] + j] );
-            }
-            printf("\n");
-        }
-    }
+   // MPI_Gatherv(result_M , 1 , resizedtype2 ,
+   //             new_M , counts2 , displs2 ,
+   //             MPI_DOUBLE , 0 , new ) ;
+//
+   // if (rank == 0){
+   //     const char * new_image = argv[7] ;
+   //     write_pgm_image((short int*)new_M , 65535 , N[0] , N[1] , new_image) ;
+   //    
+   // }
 
     MPI_Type_free (&colhalo) ;
     MPI_Type_free (&type_row) ;
@@ -502,12 +457,12 @@ void write_pgm_image( void *image, int maxval, int xsize, int ysize, const char 
   // larger than 255, then 2 bytes will be needed for each pixel
   //
 
-  int color_depth = 1+((maxval>>8)>0);       // 1 if maxval < 256, 2 otherwise
+  int color_depth = 1 + ( maxval > 255 );
 
   fprintf(image_file, "P5\n# generated by\n# put here your name\n%d %d\n%d\n", xsize, ysize, maxval);
   
   // Writing file
-  fwrite( image, color_depth, xsize*ysize, image_file);  
+  fwrite( image, 1, xsize*ysize*color_depth, image_file);  
 
   fclose(image_file); 
   return ;
@@ -523,6 +478,7 @@ void write_pgm_image( void *image, int maxval, int xsize, int ysize, const char 
   
   ------------------------------------------------------------------ */
 }
+
 
 void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const char *image_name)
 /*
@@ -587,16 +543,11 @@ void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const ch
       *ysize  = 0;
     }  
 
-  if ( I_M_LITTLE_ENDIAN && (color_depth > 1) )
-    {
-      // pgm files has the short int written in
-      // big endian;
-      // they must be swapped on little endian machines
-      //
-      size = *xsize * *ysize;
-      for ( int i = 0; i < size; i+= color_depth )
-	(*(short int**)image)[i] = swap((short int)(*(short int**)image)[i]);
-    }
-  fclose(image_file); 
+  fclose(image_file);
   return;
 }
+
+
+
+
+
