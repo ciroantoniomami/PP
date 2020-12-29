@@ -35,7 +35,7 @@ int main (int argc , char * argv[]){
     int  ysize ;
     
     int maxval ;
-    unsigned short int * M ;
+    short int * M ;
     double * new_M ;
     
     
@@ -48,7 +48,7 @@ int main (int argc , char * argv[]){
     int N[2] = {xsize , ysize} ;
     new_M = (double*)malloc(N[0] * N[1] * sizeof(double));
 
-    swap_image((void *)M , xsize , ysize , maxval);
+    swap_image((void*)M , xsize , ysize , maxval);
 
     int type_kernel ;
     int dim_kernel ;
@@ -89,14 +89,14 @@ int main (int argc , char * argv[]){
     local_dim[0] = N[0] / dims[0] ;
     local_dim[1] = N[1] / dims[1] ;
 
-    unsigned short int * local_M ;
-    local_M = (unsigned short int *)calloc(local_dim[0] * local_dim[1] , sizeof(unsigned short int)) ;
+    short int * local_M ;
+    local_M = (short int *)calloc(local_dim[0] * local_dim[1] , sizeof(short int)) ;
 
     MPI_Datatype type, resizedtype ;
     int starts [2] = {0 , 0} ;
 
-    MPI_Type_create_subarray (2, N , local_dim , starts , MPI_ORDER_C , MPI_UNSIGNED_SHORT , &type) ;
-    MPI_Type_create_resized (type, 0, local_dim[0] * sizeof(unsigned short int), &resizedtype) ;
+    MPI_Type_create_subarray (2, N , local_dim , starts , MPI_ORDER_C , MPI_SHORT , &type) ;
+    MPI_Type_create_resized (type, 0, local_dim[0] * sizeof(short int), &resizedtype) ;
     MPI_Type_commit (&resizedtype) ;
 
     MPI_Datatype type2, resizedtype2 ;
@@ -134,15 +134,15 @@ int main (int argc , char * argv[]){
     MPI_Barrier (new) ;
     /* send submatrices to all processes */
     MPI_Scatterv (M , counts , displs , resizedtype , local_M ,
-     local_dim[0] * local_dim[1] , MPI_UNSIGNED_SHORT, 0, new) ;
+     local_dim[0] * local_dim[1] , MPI_SHORT, 0, new) ;
 
     MPI_Barrier (new) ;
     
     if( rank == 0){
-        swap_image((void *)local_M , local_dim[0] , local_dim[1] , maxval);
+        swap_image((void*)local_M , local_dim[0] , local_dim[1] , maxval);
 
         const char * new_image = argv[5] ;
-        write_pgm_image(local_M , 65535 , local_dim[0] , local_dim[1] , new_image) ;
+        write_pgm_image((void*)local_M , 65535 , local_dim[0] , local_dim[1] , new_image) ;
     }
     // The structure that will be used to exchange data between   
     short int * ubuffer = (short int *) calloc (  local_dim[0] * kdim , sizeof ( short int)) ;    
