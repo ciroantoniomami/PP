@@ -4,10 +4,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#define XWIDTH 256
+#define YWIDTH 256
+#define MAXVAL 65535
+
+
 #if ((0x100 & 0xf) == 0x0)
 #define I_M_LITTLE_ENDIAN 1
 #define swap(mem) (( (mem) & (short int)0xff00) >> 8) +	\
-  ( (mem) & (short int)0x00ff << 8)
+  ( ((mem) & (short int)0x00ff) << 8)
 #else
 #define I_M_LITTLE_ENDIAN 0
 #define swap(mem) (mem)
@@ -36,7 +41,7 @@ int main (int argc , char * argv[]){
     
     int maxval ;
     short int * M ;
-    double * new_M ;
+    short int * new_M ;
     
     
 
@@ -46,7 +51,7 @@ int main (int argc , char * argv[]){
    
     read_pgm_image((void **)&M , &maxval , &xsize , &ysize , image_name) ;
     int N[2] = {xsize , ysize} ;
-    new_M = (double*)malloc(N[0] * N[1] * sizeof(double));
+    new_M = (short int*)malloc(N[0] * N[1] * sizeof(short int));
 
     swap_image((void*)M , xsize , ysize , maxval);
 
@@ -362,15 +367,17 @@ int main (int argc , char * argv[]){
 //        } 
 
 
-   // MPI_Gatherv(result_M , 1 , resizedtype2 ,
-   //             new_M , counts2 , displs2 ,
-   //             MPI_DOUBLE , 0 , new ) ;
+    MPI_Gatherv(local_M , local_dim[0] * local_dim[1] , MPI_SHORT ,
+                new_M , counts , displs ,
+                resizedtype , 0 , new ) ;
+
+    //if (rank == 0){
+    //    swap_image((void*)new_M , xsize , ysize , maxval);
 //
-   // if (rank == 0){
-   //     const char * new_image = argv[7] ;
-   //     write_pgm_image((short int*)new_M , 65535 , N[0] , N[1] , new_image) ;
-   //    
-   // }
+    //    const char * new_image = argv[5] ;
+    //    write_pgm_image((void*)new_M , 65535 , N[0] , N[1] , new_image) ;
+    //   
+    //}
 
     MPI_Type_free (&colhalo) ;
     MPI_Type_free (&type_row) ;
@@ -566,7 +573,7 @@ void swap_image( void *image, int xsize, int ysize, int maxval )
       // one to another
       //
       unsigned int size = xsize * ysize;
-      for ( int i = 0; i < size; i+= 2 )
+      for ( int i = 0; i < size; i+= 1 )
   	((unsigned short int*)image)[i] = swap(((unsigned short int*)image)[i]);
     }
   return;

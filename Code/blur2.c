@@ -4,19 +4,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <omp.h>
+#define XWIDTH 256
+#define YWIDTH 256
+#define MAXVAL 65535
+
+
 #if ((0x100 & 0xf) == 0x0)
 #define I_M_LITTLE_ENDIAN 1
 #define swap(mem) (( (mem) & (short int)0xff00) >> 8) +	\
-  ( (mem) & (short int)0x00ff << 8)
+  ( ((mem) & (short int)0x00ff) << 8)
 #else
 #define I_M_LITTLE_ENDIAN 0
 #define swap(mem) (mem)
 #endif
 
-void kernel (double * K , int dim_kernel , int type_kernel , int weight) ;
+void kernel (double * K , int dim_kernel , int type_kernel , double weight) ;
 void write_pgm_image( void *image, int maxval, int xsize, int ysize, const char *image_name);
 void read_pgm_image( void **image, int *maxval, int *xsize, int *ysize, const char *image_name);
 void swap_image( void *image, int xsize, int ysize, int maxval );
+void conv( unsigned short int * result_M , unsigned short int * temp , double * K , int kdim , int * local_dim , int dim_kernel , int i , int j) ;
 
 
 
@@ -35,53 +42,65 @@ int main (int argc , char * argv[]){
     int  ysize ;
     
     int maxval ;
-    unsigned short int * M ;
+    unsigned short int * M = NULL ;
     double * new_M ;
+    double start_time , end_time ;
     
-    
+    int N[2];
 
-    
-    
-    
-   
-    read_pgm_image((void **)&M , &maxval , &xsize , &ysize , image_name) ;
-    int N[2] = {xsize , ysize} ;
-    new_M = (double*)malloc(N[0] * N[1] * sizeof(double));
 
-    //swap_image((void *)M , xsize , ysize , maxval);
 
+    new_M = (double *)malloc(N[0] * N[1] * sizeof(double)) ;
     int type_kernel ;
     int dim_kernel ;
     type_kernel = atoi (argv[2]) ;
     dim_kernel = atoi (argv[3]) ;
-    int weight ;
-    if (atoi (argv[4])) { weight = atoi (argv[4]) ;}
+    double weight ;
+    if (atof (argv[4])) { weight = atof (argv[4]) ;}
     else {weight = 0 ;}
-    int kdim = dim_kernel / 2 ;
+    int kdim = (int)(dim_kernel/2) ;
     double * K ;
     K = (double*)malloc( dim_kernel * dim_kernel * sizeof(double)) ;
     kernel ( K , dim_kernel , type_kernel , weight) ;
 
-    
-    MPI_Init(&argc , &argv);
-    MPI_Status status[2] ;
-    MPI_Request request[2] ;
+    int mpi_provided_thread_level ;
+
+    MPI_Init_thread( &argc, &argv, MPI_THREAD_FUNNELED, &mpi_provided_thread_level);
+
+    if ( mpi_provided_thread_level < MPI_THREAD_FUNNELED ) {
+        printf("a problem arise when asking for MPI_THREAD_FUNNELED level\n"); MPI_Finalize();
+        exit( 1 );
+    }
+    MPI_Status status ;
+    MPI_Request request;
+
+    start_time = MPI_Wtime() ;
     //Create a new comm world
     int size;
     MPI_Comm_size(MPI_COMM_WORLD , &size);
 
-    int dims[2] = {0,0};
-    MPI_Dims_create(size ,2 , dims);
-  
-    int periods[2] = {0, 0};
-    int reorder = true;
-
-    MPI_Comm new;
-    MPI_Cart_create(MPI_COMM_WORLD ,2 , dims ,
-    periods , reorder , &new);
-
     int rank;
-    MPI_Comm_rank(new , &rank);
+    MPI_Comm_rank(MPI_COMM_WORLD , &rank);
+
+    if (rank == 3){
+
+      read_pgm_image((void **)&M , &maxval , &xsize , &ysize , image_name) ;
+      swap_image((void *)M , xsize , ysize , maxval);
+
+      
+    }
+
+    
+    MPI_Bcast (&xsize , 1 , MPI_INT , 3 , MPI_COMM_WORLD) ;
+    MPI_Bcast (&ysize , 1 , MPI_INT , 3 , MPI_COMM_WORLD) ;
+    MPI_Bcast (&maxval , 1 , MPI_INT , 3 , MPI_COMM_WORLD) ;
+
+    MPI_Barrier (MPI_COMM_WORLD) ;
+
+    
+    N[0] = xsize ;
+    N[1] = ysize ;
+    
 
     //Define the number of elements in each dimension for each proc
     int local_dim[2];
@@ -90,13 +109,11 @@ int main (int argc , char * argv[]){
     local_dim[1] = N[1] / size ;
 
     unsigned short int * local_M ;
-    local_M = (unsigned short int *)calloc(local_dim[0] * local_dim[1] , sizeof(unsigned short int)) ;
+    local_M = (unsigned short int *)malloc(local_dim[0] * local_dim[1] * sizeof(unsigned short int)) ;
 
 
     int counts[size] ;
-    int counts2[size] ;
     int displs[size] ;
-    int displs2[size] ;
 
 
 
@@ -110,38 +127,127 @@ int main (int argc , char * argv[]){
             printf ("\n") ;
         }
 
-    for (int i = 0; i < size; i++) counts[i] = N[0] * local_dim[1] ;
-    for (int i = 0; i < size; i++) displs[i] = i * N[0] * local_dim[1] ;
+    for (int i = 0; i < size; i++) counts[i] = local_dim[0] * local_dim[1] ;
+    for (int i = 0; i < size; i++) displs[i] = i * local_dim[0] * local_dim[1] ;
     }
-    MPI_Bcast (counts , size , MPI_INT , 0 , new) ;
-    MPI_Bcast (displs , size , MPI_INT , 0 , new) ;
+    MPI_Bcast (counts , size , MPI_INT , 0 , MPI_COMM_WORLD) ;
+    MPI_Bcast (displs , size , MPI_INT , 0 , MPI_COMM_WORLD) ;
 
-    MPI_Barrier (new) ;
+    MPI_Barrier (MPI_COMM_WORLD) ;
     /* send submatrices to all processes */
     MPI_Scatterv (M , counts , displs , MPI_UNSIGNED_SHORT , local_M ,
-     local_dim[0] * local_dim[1] , MPI_UNSIGNED_SHORT, 0, new) ;
+     local_dim[0] * local_dim[1] , MPI_UNSIGNED_SHORT, 3, MPI_COMM_WORLD) ;
 
-    MPI_Barrier (new) ;
+    MPI_Barrier (MPI_COMM_WORLD) ;
+    
+    unsigned short int * ubuffer = (unsigned short int *) calloc (  local_dim[0] * kdim , sizeof ( unsigned short int)) ;    
+    unsigned short int * dbuffer = (unsigned short int *) calloc (  local_dim[0] * kdim , sizeof ( unsigned short int)) ;
+
+
+    int up = rank - 1;
+    int down = rank + 1 ;
+
+    if (up != -1){
+        MPI_Irecv (ubuffer , kdim * local_dim[0] , MPI_UNSIGNED_SHORT , up , 124 , MPI_COMM_WORLD , &request) ;
+
+    }
+
+    if (down != size){
+        MPI_Send (&local_M[local_dim[0] * local_dim[1]  - kdim * local_dim[0]] , kdim * local_dim[0] , MPI_UNSIGNED_SHORT , down , 124 , MPI_COMM_WORLD) ;
+
+    }
+
+    if(up != -1){
+        MPI_Wait( &request , &status) ;
+    }
+
+    if (down != size){
+        MPI_Irecv (dbuffer , kdim * local_dim[0] , MPI_UNSIGNED_SHORT  , down , 125 , MPI_COMM_WORLD , &request) ;
+      
+    }
+
+    if (up != -1){
+        MPI_Send (local_M , kdim * local_dim[0] , MPI_UNSIGNED_SHORT , up , 125 , MPI_COMM_WORLD) ;
+      
+    }
+
+    if(down != size){
+        MPI_Wait ( &request , &status) ;
+    }
+    printf("I'm rank : %d my up is : %d , my down is : %d\n" , rank , up ,down);
+
+    unsigned short int * result_M ;
+    result_M = (unsigned short int *)calloc(local_dim[0] * local_dim[1] , sizeof(unsigned short int)) ;
+
+    unsigned short int * temp;
+    temp = (unsigned short int*)calloc((local_dim[0] + (2 * kdim)) * (local_dim[1] + (2 * kdim)) , sizeof(unsigned short int)) ;
+
+    for ( int i = 0 ; i < kdim ; i ++){
+      for (int j = 0 ; j < local_dim[0] ; j++) 
+        temp[i * (local_dim[0] + 2 * kdim)  + j + kdim] = ubuffer[i * local_dim[0] + j] ;
+    }
+
+    for (int i = 0 ; i < local_dim[1] ; i ++){
+      for (int j = 0 ; j < local_dim[0] ; j++) 
+        temp[(i + kdim) * (local_dim[0] + 2 * kdim) + j + kdim] = local_M[i * local_dim[0] + j] ;
+    }
+
+    for (int i = 0 ; i < kdim ; i ++){
+      for (int j = 0 ; j < local_dim[0] ; j++)
+        temp[(i + local_dim[1] + kdim) * (local_dim[0] + 2 * kdim)  + j + kdim] = dbuffer[i * local_dim[0] + j] ;
+    }
+
+
+  
+    //if( rank == 1){
+    //    //swap_image((void *)local_M , local_dim[0] , local_dim[1] , maxval);
+//
+    //    const char * new_image = argv[5] ;
+    //    write_pgm_image((void*)temp , maxval , N[0] + 2*kdim  , local_dim[1] + 2*kdim, new_image) ;
+    //}
+
+
+    int i , j ;
+    #pragma omp parallel for schedule(dynamic)
+
+
+        for (int k = 0 ; k < local_dim[1] * local_dim[0] ; k++){
+            i = k / local_dim[0] ;
+            j = k % local_dim[0] ;
+            conv(result_M , temp , K , kdim , local_dim , dim_kernel , i , j) ;
+        }
+    
+    
+ 
+    //if( rank == 0){
+    //    swap_image((void *)result_M , local_dim[0] , local_dim[1] , maxval);  
+    //    const char * new_image = argv[5] ;
+    //    write_pgm_image((void*)result_M , maxval , local_dim[0] , local_dim[1] , new_image) ;
+    //}
     
 
+    MPI_Gatherv(result_M , local_dim[0] * local_dim[1] , MPI_UNSIGNED_SHORT,
+               M , counts , displs ,
+             MPI_UNSIGNED_SHORT , 3 , MPI_COMM_WORLD ) ;
 
-    double * result_M ;
-    result_M = (double *)calloc(local_dim[0] * local_dim[1] , sizeof(double)) ;
-
-
-    MPI_Gatherv(local_M , local_dim[0] * local_dim[1] , MPI_UNSIGNED_SHORT ,
-               new_M , counts , displs ,
-             MPI_DOUBLE , 0 , new ) ;
-
-    if( rank == 0){
-        //swap_image((void *)local_M , local_dim[0] , local_dim[1] , maxval);
+    if( rank == 3){
+        swap_image((void *)M , N[0] , N[1] , maxval);
 
         const char * new_image = argv[5] ;
-        write_pgm_image(new_M , 65535 , N[0] , N[1] , new_image) ;
+        write_pgm_image((void*)M , maxval , N[0] , N[1] , new_image) ;
     }
 
 
     free (local_M) ;
+    free (temp) ;
+    free (result_M) ;
+
+
+    end_time = MPI_Wtime() ;
+
+    if (rank == 3){
+      printf("walltime : %10.8f\n" , end_time - start_time) ;
+    }
     MPI_Finalize () ;
 
     free ( M ) ;
@@ -153,7 +259,7 @@ int main (int argc , char * argv[]){
 
 
 
-void kernel (double * K, int dim_kernel , int type_kernel , int weight){
+void kernel (double * K, int dim_kernel , int type_kernel , double weight){
     //Mean Kernel = 0
     //Weighted Kernel = 1
     //Guassian Kernel = 2
@@ -332,7 +438,15 @@ void swap_image( void *image, int xsize, int ysize, int maxval )
   return;
 }
 
+void conv( unsigned short int * result_M , unsigned short int * temp , double * K , int kdim , int * local_dim , int dim_kernel , int i , int j )
+{
 
+  for (int u = 0 ; u < dim_kernel ; u++){
+                for (int v = 0 ; v < dim_kernel ; v++){
+                    result_M[i * local_dim[0] + j] += (temp[ ((i + kdim) + (kdim - u)) * (local_dim[0] + 2 * kdim) + (j + kdim + (v - kdim))] *  K[(dim_kernel - 1 - u) * dim_kernel + v]) ;
+                }
+            }
+}
 
 
 
